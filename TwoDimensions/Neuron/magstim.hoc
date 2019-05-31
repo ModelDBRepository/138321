@@ -1,0 +1,201 @@
+/* Load electric field generated in Matlab.  This is just the spatial 
+part of the electric field.  The temporal part of the field (dI/dt -
+the derivative of the current flowing in the coil) is calculated below 
+assuming an LRC circuit.  The terms are combined in the xtra MOD file.  
+
+The Units of the electric field are in [V/m].  The Units of the 
+temporal part of the field are [A/msec].  Thus we set the units of the spatial
+part to be [V msec/m A] in Matlab
+*/
+
+objref f1, Ex, Ey   
+f1 = new File()
+Ex = new Matrix(4e3,4e3)
+Ey = new Matrix(4e3,4e3)
+f1.ropen("ex.txt")  //load the component of the field in the x direcion
+for i = 0,Ex.ncol-1 {
+        for j = 0, Ex.nrow-1 {
+                Ex.x[j][i] = -1*f1.scanvar()  //(-) is since we want to be below the coil
+  }
+}
+f1.ropen("ey.txt") //load the component of the field in the y direcion
+for i = 0,Ey.ncol-1 {   // commented out for the one dimentional case
+        for j = 0, Ey.nrow-1 {
+    Ey.x[j][i] = -1*f1.scanvar()
+        }
+}
+
+XShift=2000		// setting the center of the coil
+YShift=2000
+
+
+/* use the code from extracellular_stim_and_rec provided
+on  the NEURON web page to determin the spatial coordinated of 
+segments.
+*/
+
+// original data, irregularly spaced
+objref xx, yy, length
+// interpolated data, spaced at regular intervals
+objref xint, yint, range
+
+proc grindaway() { local ii, nn, kk, xr,xrf
+	forall {
+	  	if (ismembrane("xtra")) {
+			// get the data for the seciton
+			nn = n3d()
+			nseg = n3d()-1 //int(L/20)+1		
+			xx = new Vector(nn)
+			yy = new Vector(nn)
+			length = new Vector(nn)
+
+			for ii = 0,nn-1 {
+				xx.x[ii] = x3d(ii)
+				yy.x[ii] = y3d(ii)
+				length.x[ii] = arc3d(ii)
+			}
+
+			length.div(length.x[nn-1])
+
+			// initialize the destination "independent" vector
+			range = new Vector(nseg+2)
+			range.indgen(1/nseg)
+			range.sub(1/(2*nseg))
+			range.x[0]=0
+			range.x[nseg+1]=1
+
+			xint = new Vector(nseg+2)
+			yint = new Vector(nseg+2)
+			xint.interpolate(range, length, xx)
+			yint.interpolate(range, length, yy)
+		
+			for ii = 0, nseg {
+				xr = range.x[ii]
+				xrf= range.x[ii+1]
+				
+				x_xtra(xr:xrf)=int(xint.x[ii]):xint.x[ii+1]     //[micrometer]
+				y_xtra(xr:xrf)=int(yint.x[ii]):yint.x[ii+1]
+
+				XX_xtra(xr:xrf)=int(xint.x[ii]+XShift):int(xint.x[ii+1]+XShift) //[micrometer]
+				YY_xtra(xr:xrf)=int(yint.x[ii]+YShift):int(yint.x[ii+1]+YShift)
+				
+				DX_xtra(xr:xrf)=xint.x[ii+1]-xint.x[ii]:xint.x[ii+1]-xint.x[ii] //[micrometer]
+				DY_xtra(xr:xrf)=yint.x[ii+1]-yint.x[ii]:yint.x[ii+1]-yint.x[ii]
+			
+				//the value of the spatial part of the electric field in the direction of the cable
+				Exs_xtra(xr:xrf)=Ex.x[XX_xtra(xr)][YY_xtra(xr)]:Ex.x[XX_xtra(xrf)][YY_xtra(xrf)]
+				Eys_xtra(xr:xrf)=Ey.x[XX_xtra(xr)][YY_xtra(xr)]:Ey.x[XX_xtra(xrf)][YY_xtra(xrf)]
+
+				//The spatial derivative of the above value.  This is required
+				//in order to transform the axial current I=E*X/ri to the membrane
+				//current we will inject via the MOD file since, acording to cable
+				//theory i_m=-dI/dx.  Units are [V ms/m A microm]. This is
+				//the derivative per unit length.
+				BB=((Exs_xtra(xrf)-Exs_xtra(xr))*DX_xtra(xr)+(Eys_xtra(xrf)-Eys_xtra(xr))*DY_xtra(xr))/(DX_xtra(xr)^2+DY_xtra(xr)^2)   
+				
+				DEDA_xtra(xr:xrf)=BB:BB
+			}		
+		}
+    }
+}
+
+
+
+// set up the pointers after the sections have been created
+proc setrx() { 
+	grindaway()  // determines interpolated locations of nodes
+	forall {  
+		for(x){	
+			rx_xtra(x)=-1*(L/nseg)*DEDA_xtra(x)/ri(x)  // [ms/m2] the L/nseg is to convert the calculation
+			// to the entire segment.
+		}
+	}
+}
+
+/* Calculate the derivative of the current flowing in the LRC circuit 
+the code switches between the over and underdamped cases automatically */
+
+objref stim_amp, stim_time, testg
+stim_amp = new Vector()
+stim_time = new Vector()
+testg= new Graph()
+
+proc stim_waveform(){ local i,j,pstart,pstop,pdur,amp,dur,scale1,W1,W2,exp1,exp2,exp3,Sin1,Cos1,LC,RC,CC
+
+  testg.erase()
+  testg.beginline()
+  stim_amp.resize(tstop/dt+1)
+  stim_amp.fill(0)
+  stim_time.resize(tstop/dt+1)
+  stim_time.fill(0)
+  pstart=int($1/dt)
+  pstop=int(($1+$2)/dt)
+  pdur=int($2/dt)
+  dur=$2
+  amp=$3
+  CC=$4*1e-6 // convert to Farad
+  RC=$5	//Ohm
+  LC=$6*1e-6 // convert to Henry
+   for i=0,int(tstop/dt){
+	stim_time.x[i]=i*dt
+	if(i>pstart && i<pstop) {
+	
+		if((RC/(2*LC))^2>1/(LC*CC)){
+			//Overdamped
+			W1=RC/(2*LC) //1/sec
+  			W2=sqrt((W1*W1)-(1/(LC*CC))) //1/sec
+  			scale1=amp*CC*W2*((W1/W2)^2-1)/2    // [Ampere]
+			exp1=exp(-W1*(stim_time.x[i]-$1)/1000)	// divide by 1000 to keep units in exp in sec
+			exp2=exp( W2*(stim_time.x[i]-$1)/1000)
+			exp3=exp(-W2*(stim_time.x[i]-$1)/1000)
+			stim_amp.x[i]=(scale1*exp1*((W2-W1)*exp2+(W2+W1)*exp3))/1000  // dI/dt  in [A/millisec]		
+		} else {
+		//Underdamped
+			W1=RC/(2*LC) //1/sec
+  			W2=sqrt(1/(LC*CC)-W1^2) //1/sec
+  			scale1=amp*CC*W2*((W1/W2)^2-1)/2    // [Ampere]
+			exp1=exp(-W1*(stim_time.x[i]-$1)/1000)	// divide by 1000 to keep units in exp in sec
+			Sin1=sin(W2*(stim_time.x[i]-$1)/1000)
+			Cos1=cos(W2*(stim_time.x[i]-$1)/1000)		
+			stim_amp.x[i]=(scale1*exp1*(W2*Cos1-W1*Sin1))/1000  	// dI/dt  in [A/millisec]		
+		}
+	}
+	testg.line(i*dt,stim_amp.x[i])
+  }
+	testg.size($1-100*dt,$1+$2+100*dt,1.1*stim_amp.min(),1.1*stim_amp.max())
+	testg.flush()
+}
+
+proc attach_stim() {
+  forall {
+    if (ismembrane("xtra")) {
+        for(x) { stim_amp.play(&is_xtra(x), dt)}
+    }
+  }
+}
+
+proc setstim() {
+	stim_waveform(DEL, DUR, AMP,Cc,Rc,Lc)
+  	attach_stim()
+}
+
+setrx()
+
+// default values for RLC circuit and stimulation.  
+DEL = 0   	// 	[ms]
+DUR = 0.4 	// 	[ms] 
+AMP = 900  	// 	[Volt] 
+Rc=0.09 		//	[Ohm]   
+Lc=13 		//	[microHenry]
+Cc=200 		//	[microFarad]
+
+setstim(DEL, DUR, AMP,Cc,Rc,Lc)
+
+xpanel("Magnetic Coil Current", 0)
+  xvalue("Stim Delay           (ms)", "DEL", 1, "setstim(DEL,DUR,AMP,Cc,Rc,Lc)", 0, 1)
+  xvalue("Stim Duration        (ms)", "DUR", 1, "setstim(DEL,DUR,AMP,Cc,Rc,Lc)", 0, 1)
+  xvalue("Stim Amplitude        (V)", "AMP", 1, "setstim(DEL,DUR,AMP,Cc,Rc,Lc)", 0, 1)
+  xvalue("Coil Capacitance (microF)", "Cc",  1, "setstim(DEL,DUR,AMP,Cc,Rc,Lc)", 0, 1)
+  xvalue("Coil Inductance  (microH)", "Lc",  1, "setstim(DEL,DUR,AMP,Cc,Rc,Lc)", 0, 1)
+  xvalue("Coil Resistance     (Ohm)", "Rc",  1, "setstim(DEL,DUR,AMP,Cc,Rc,Lc)", 0, 1)
+xpanel(73,497)

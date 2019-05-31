@@ -1,0 +1,15 @@
+load_file("nrngui.hoc")
+
+xopen("RB.hoc")
+
+tstop=20 
+dt=0.001
+celsius = 18.5
+
+load_file("magstim.hoc")	// sets magnetic stimulation
+
+xopen("demo.ses")
+
+
+
+

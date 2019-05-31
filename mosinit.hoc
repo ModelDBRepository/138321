@@ -1,0 +1,4 @@
+//moddir OneDimension/Neuron
+load_file("nrngui.hoc")
+chdir("OneDimension/Neuron")
+load_file("demo.hoc")

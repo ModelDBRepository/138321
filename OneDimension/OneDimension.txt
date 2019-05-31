@@ -1,0 +1,5 @@
+•	Open the file "demo.hoc"
+•	Press "Init & Run" in the RunControl window. 
+•	A movie presenting the membrane potential along the axon fiber will appear in the Graph[3] window. Notice that the stimulation amplitude default is set to 30 volts agreeing with the subthreshold activity.    
+•	You can control the electrical circuit and stimulation parameters in the Magnetic Coil Current window. Changing the stimulation amplitude to a value higher than 36 volt will present a superthreshold activity.
+•	In addition to the movie graph, the pulse shape is presented in Graph window and the membrane potential in the soma as a function of time is presented in Graph[2].   

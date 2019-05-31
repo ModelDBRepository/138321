@@ -1,0 +1,51 @@
+ create  dend[2]
+ objref sec_list
+  access dend
+  proc celldef() {
+  basic_shape()
+  biophys()
+  access dend[0] {distance(0, 0)}
+}
+
+proc basic_shape() {
+   connect dend[0](0), dend[1](0)
+  dend[0] {
+  	pt3dclear() 
+  	pt3dadd(0, 0, 0, 1) 
+  	pt3dadd(-20000, 0, 0, 1)
+  	pt3dadd(-40000, 0, 0, 1)
+  	pt3dadd(-60000, 0, 0, 1)
+  	pt3dadd(-80000,0 , 0, 1)
+  	}
+  dend[1] {
+  	pt3dclear() 
+  	pt3dadd(0, 0, 0, 1) 
+  	pt3dadd(20000, 0, 0, 1)
+  	pt3dadd(40000, 0, 0, 1)
+  	pt3dadd(60000, 0, 0, 1)
+  	pt3dadd(79999, 0, 0, 1)
+  	}
+  forall { L =arc3d(n3d()-1)   diam = 100  }  
+  forall { nseg = 100  }
+  sec_list = new SectionList()
+  for i=0, 1 dend[i] sec_list.append()
+}
+
+proc biophys() {
+  forall {
+    Ra = 35.4
+    cm = 1
+    insert hh
+    gnabar_hh = 0.12
+    gkbar_hh = 0.036
+    gl_hh = 0.0003
+    el_hh = -54.387
+    ena=50
+    ek=-77
+    insert xtra
+  }
+}
+
+
+celldef()
+
